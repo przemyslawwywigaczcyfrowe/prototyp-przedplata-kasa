@@ -47,11 +47,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const PRODUKT = 'Smallrig mikrofon bezprzewodowy S70 czarny [5715]';
-const POWOD = {
-  salon: 'Niedostępna przy tym zamówieniu. ' + PRODUKT + ' sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego prosimy o płatność z góry. Przy odbiorze obejrzysz sprzęt, a jeśli go nie weźmiesz, zwrócimy całą kwotę.',
-  kurier: 'Niedostępna przy tym zamówieniu. ' + PRODUKT + ' sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego prosimy o płatność z góry.'
-};
+const POWOD_TXT = 'W koszyku masz produkty, które sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego prosimy o płatność z góry.';
+const POWOD = { salon: POWOD_TXT, kurier: POWOD_TXT };
 const NOTES = {
   A: 'Wersja A to kasa jak dziś. W koszyku jest mikrofon z czasem realizacji „Wysyłamy w 4-6 dni”, więc koszyk ma towar do sprowadzenia.',
   B: 'Wersja B: przy towarze do sprowadzenia <b>„Gotówka / Karta w salonie”</b> i <b>„Za pobraniem”</b> są nieaktywne, przeniesione na koniec listy, z powodem pod nazwą. Krok dostawy wygląda jak dziś. Przy koszyku z samymi produktami „Wysyłamy w 24h” kasa wygląda jak w wersji A.'
