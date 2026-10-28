@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Przedpłata w kasie</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#666; --line:#e2e2e2; --bg:#f4f4f4; --bar:#fff; --on:#1a1a1a; --onInk:#fff; --b:#dd0031; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; }
+  body { font:14px/1.4 Lato, "Segoe UI", Arial, sans-serif; color:var(--ink); background:var(--bg); display:flex; flex-direction:column; }
+  .bar { background:var(--bar); border-bottom:1px solid var(--line); padding:10px 16px; display:flex; flex-wrap:wrap; gap:10px 22px; align-items:center; }
+  .bar h1 { font-size:15px; margin:0 6px 0 0; }
+  .grp { display:flex; align-items:center; gap:8px; }
+  .grp > span { color:var(--muted); font-size:12px; }
+  .seg { display:inline-flex; border:1px solid var(--ink); border-radius:4px; overflow:hidden; }
+  .seg button { font:inherit; font-size:13px; border:0; background:#fff; color:var(--ink); padding:6px 12px; cursor:pointer; }
+  .seg button + button { border-left:1px solid var(--ink); }
+  .seg button[aria-pressed="true"] { background:var(--on); color:var(--onInk); }
+  .seg.ver button[aria-pressed="true"][data-v="B"] { background:var(--b); }
+  .note { flex-basis:100%; font-size:13px; color:#333; margin:0; }
+  .note b { color:var(--ink); }
+  .stage { flex:1; display:flex; justify-content:center; overflow:auto; padding:0; }
+  .stage.phone { padding:16px; }
+  iframe { border:0; background:#fff; width:100%; height:100%; display:block; }
+  .stage.phone iframe { width:390px; height:844px; max-height:calc(100vh - 140px); border:1px solid #cfcfcf; border-radius:18px; box-shadow:0 6px 24px rgba(0,0,0,.12); flex:none; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#1a1a1a; color:#fff; padding:10px 16px; border-radius:6px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; }
+  .toast.show { opacity:1; }
+  @media (max-width:700px) { .stage.phone { padding:0; } .stage.phone iframe { width:100%; height:100%; max-height:none; border:0; border-radius:0; box-shadow:none; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Przedpłata przy towarze do sprowadzenia</h1>
+  <div class="grp"><span>Wersja</span>
+    <div class="seg ver" data-k="v"><button data-v="A">A: dziś</button><button data-v="B">B: przedpłata</button></div></div>
+  <div class="grp"><span>Dostawa</span>
+    <div class="seg" data-k="d"><button data-v="salon">Odbiór w salonie</button><button data-v="kurier">Kurier DPD</button></div></div>
+  <div class="grp"><span>Krok kasy</span>
+    <div class="seg" data-k="k"><button data-v="dostawa">Dostawa</button><button data-v="platnosc">Płatność</button></div></div>
+  <div class="grp"><span>Ekran</span>
+    <div class="seg" data-k="e"><button data-v="komputer">Komputer</button><button data-v="telefon">Telefon</button></div></div>
+  <p class="note" id="note"></p>
+</div>
+<div class="stage" id="stage"><iframe id="f" title="Kasa sklepu"></iframe></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TXT_SALON = 'Ten produkt sprowadzimy do salonu Kraków specjalnie dla Ciebie, dlatego prosimy o płatność z góry. Przy odbiorze obejrzysz sprzęt. Jeśli go nie weźmiesz, zwrócimy całą kwotę.';
+const TXT_KURIER = 'Ten produkt sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego płatność za pobraniem jest niedostępna.';
+const NOTES = {
+  A: 'Wersja A to kasa jak dziś. W koszyku jest mikrofon z czasem realizacji „Wysyłamy w 4-6 dni”, więc koszyk ma towar do sprowadzenia.',
+  B: 'Wersja B: przy towarze do sprowadzenia znikają <b>„Gotówka / Karta w salonie”</b> i <b>„Za pobraniem”</b>, a klient widzi komunikat. Przy koszyku z samymi produktami „Wysyłamy w 24h” kasa wygląda jak w wersji A.'
+};
+const st = { v:'B', d:'salon', k:'dostawa', e:'komputer' };
+try { Object.assign(st, JSON.parse(sessionStorage.getItem('przedplata') || '{}')); } catch (e) {}
+const h = location.hash.slice(1).split('-'); // np. #B-salon-platnosc-telefon
+if (h[0] === 'A' || h[0] === 'B') st.v = h[0];
+if (h[1] === 'salon' || h[1] === 'kurier') st.d = h[1];
+if (h[2] === 'dostawa' || h[2] === 'platnosc') st.k = h[2];
+if (h[3] === 'komputer' || h[3] === 'telefon') st.e = h[3];
+
+const f = document.getElementById('f'), stage = document.getElementById('stage');
+let toastT;
+function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2600); }
+
+function render() {
+  document.querySelectorAll('.seg').forEach(s => s.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(st[s.dataset.k] === b.dataset.v))));
+  document.getElementById('note').innerHTML = NOTES[st.v];
+  stage.classList.toggle('phone', st.e === 'telefon');
+  const src = (st.k === 'dostawa' ? 'dostawa-' : 'platnosc-') + st.d + '.html';
+  history.replaceState(null, '', '#' + [st.v, st.d, st.k, st.e].join('-'));
+  try { sessionStorage.setItem('przedplata', JSON.stringify(st)); } catch (e) {}
+  if (f.dataset.src === src) { patch(); return; }
+  f.dataset.src = src; f.src = src;
+}
+
+function alertBox(doc, text) {
+  const a = doc.createElement('div');
+  a.className = 'cyf-alert alert alert--info';
+  a.setAttribute('data-proto', '');
+  a.style.justifyContent = 'flex-start';
+  a.style.alignItems = 'flex-start';
+  a.innerHTML = '<i class="fa-solid fa-circle-info alert__icon" style="margin-top:.05em"></i><span></span>';
+  a.querySelector('span').textContent = text;
+  return a;
+}
+
+function patch() {
+  const doc = f.contentDocument;
+  if (!doc || !doc.querySelector('.checkout-scene')) return;
+  doc.querySelectorAll('[data-proto]').forEach(e => e.remove());
+  doc.querySelectorAll('[data-proto-hidden]').forEach(e => { e.style.display = ''; e.removeAttribute('data-proto-hidden'); });
+  if (st.v !== 'B') return;
+  if (st.k === 'dostawa' && st.d === 'salon') {
+    const store = doc.querySelector('.shipment[data-shipment-label="store"]');
+    const list = store && store.querySelector('.shipment__content');
+    if (list) {
+      const wrap = doc.createElement('div');
+      wrap.setAttribute('data-proto', '');
+      wrap.className = 'proto-wrap';
+      wrap.appendChild(alertBox(doc, TXT_SALON));
+      list.after(wrap);
+    }
+  }
+  if (st.k === 'platnosc') {
+    const kill = st.d === 'salon' ? 'cash_or_card_at_the_store' : 'cash_on_delivery';
+    doc.querySelectorAll('.payment').forEach(p => {
+      const i = p.querySelector('input[type=radio]');
+      const name = (p.querySelector('.payment__name') || {}).textContent || '';
+      if ((i && i.value === kill) || (st.d === 'salon' && /Gotówka \/ Karta w salonie/.test(name)) || (st.d === 'kurier' && /Za pobraniem/.test(name))) {
+        p.style.display = 'none'; p.setAttribute('data-proto-hidden', '');
+      }
+    });
+    if (st.d === 'kurier') {
+      const pl = doc.querySelector('.payment-list');
+      if (pl) { const a = alertBox(doc, TXT_KURIER); a.style.marginBottom = '12px'; pl.before(a); }
+    }
+  }
+}
+
+function wire() {
+  const doc = f.contentDocument;
+  if (!doc || !doc.querySelector('.checkout-scene') || doc.__wired) return;
+  doc.__wired = true;
+  const css = doc.createElement('style');
+  css.textContent = '.proto-wrap{padding:0 18px 18px 18px}@media (min-width:992px){.proto-wrap{padding:0 24px 24px 64px}}';
+  doc.head.appendChild(css);
+  doc.addEventListener('submit', e => e.preventDefault(), true);
+  doc.addEventListener('click', e => {
+    const t = e.target;
+    const btn = t.closest('button, a');
+    const ship = t.closest('.shipment');
+    if (ship && st.k === 'dostawa' && !t.closest('.shipment__content')) {
+      e.preventDefault();
+      const txt = ship.textContent;
+      if (ship.dataset.shipmentLabel === 'store') { if (st.d !== 'salon') { st.d = 'salon'; render(); } }
+      else if (/Kurier DPD/.test(txt)) { if (st.d !== 'kurier') { st.d = 'kurier'; render(); } }
+      else toast('W prototypie działają odbiór w salonie i Kurier DPD.');
+      return;
+    }
+    if (!btn) return;
+    const label = btn.textContent.replace(/\s+/g, ' ').trim();
+    e.preventDefault();
+    if (/Przejdź do płatności/.test(label)) { st.k = 'platnosc'; render(); return; }
+    if (/Kupuję i płacę/.test(label)) { toast('To prototyp. Zamówienie nie zostanie złożone.'); return; }
+    if (btn.closest('.checkout-steps') && /Dostawa/.test(label)) { st.k = 'dostawa'; render(); return; }
+    if (/Zmień|Wybierz/.test(label)) { toast('W prototypie salon to zawsze Kraków.'); return; }
+  }, true);
+  // krok "Dostawa" w pasku kroków na stronie płatności to zwykły link
+  doc.querySelectorAll('.checkout-steps__item').forEach(el => { if (/Dostawa/.test(el.textContent)) el.style.cursor = 'pointer'; });
+  doc.querySelectorAll('.checkout-steps__item').forEach(el => el.addEventListener('click', ev => {
+    if (/Dostawa/.test(el.textContent) && st.k === 'platnosc') { ev.preventDefault(); st.k = 'dostawa'; render(); }
+  }));
+}
+
+f.addEventListener('load', () => { wire(); patch(); });
+document.querySelectorAll('.seg').forEach(s => s.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  st[s.dataset.k] = b.dataset.v; render();
+}));
+render();
+</script>
+</body>
+</html>
