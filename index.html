@@ -47,11 +47,14 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const TXT_SALON = 'Ten produkt sprowadzimy do salonu Kraków specjalnie dla Ciebie, dlatego prosimy o płatność z góry. Przy odbiorze obejrzysz sprzęt. Jeśli go nie weźmiesz, zwrócimy całą kwotę.';
-const TXT_KURIER = 'Ten produkt sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego płatność za pobraniem jest niedostępna.';
+const PRODUKT = 'Smallrig mikrofon bezprzewodowy S70 czarny [5715]';
+const POWOD = {
+  salon: 'Niedostępna przy tym zamówieniu. ' + PRODUKT + ' sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego prosimy o płatność z góry. Przy odbiorze obejrzysz sprzęt, a jeśli go nie weźmiesz, zwrócimy całą kwotę.',
+  kurier: 'Niedostępna przy tym zamówieniu. ' + PRODUKT + ' sprowadzamy od dostawcy specjalnie dla Ciebie, dlatego prosimy o płatność z góry.'
+};
 const NOTES = {
   A: 'Wersja A to kasa jak dziś. W koszyku jest mikrofon z czasem realizacji „Wysyłamy w 4-6 dni”, więc koszyk ma towar do sprowadzenia.',
-  B: 'Wersja B: przy towarze do sprowadzenia znikają <b>„Gotówka / Karta w salonie”</b> i <b>„Za pobraniem”</b>, a klient widzi komunikat. Przy koszyku z samymi produktami „Wysyłamy w 24h” kasa wygląda jak w wersji A.'
+  B: 'Wersja B: przy towarze do sprowadzenia <b>„Gotówka / Karta w salonie”</b> i <b>„Za pobraniem”</b> są nieaktywne, przeniesione na koniec listy, z powodem pod nazwą. Krok dostawy wygląda jak dziś. Przy koszyku z samymi produktami „Wysyłamy w 24h” kasa wygląda jak w wersji A.'
 };
 const st = { v:'B', d:'salon', k:'dostawa', e:'komputer' };
 try { Object.assign(st, JSON.parse(sessionStorage.getItem('przedplata') || '{}')); } catch (e) {}
@@ -76,48 +79,30 @@ function render() {
   f.dataset.src = src; f.src = src;
 }
 
-function alertBox(doc, text) {
-  const a = doc.createElement('div');
-  a.className = 'cyf-alert alert alert--info';
-  a.setAttribute('data-proto', '');
-  a.style.justifyContent = 'flex-start';
-  a.style.alignItems = 'flex-start';
-  a.innerHTML = '<i class="fa-solid fa-circle-info alert__icon" style="margin-top:.05em"></i><span></span>';
-  a.querySelector('span').textContent = text;
-  return a;
-}
-
 function patch() {
   const doc = f.contentDocument;
   if (!doc || !doc.querySelector('.checkout-scene')) return;
-  doc.querySelectorAll('[data-proto]').forEach(e => e.remove());
-  doc.querySelectorAll('[data-proto-hidden]').forEach(e => { e.style.display = ''; e.removeAttribute('data-proto-hidden'); });
-  if (st.v !== 'B') return;
-  if (st.k === 'dostawa' && st.d === 'salon') {
-    const store = doc.querySelector('.shipment[data-shipment-label="store"]');
-    const list = store && store.querySelector('.shipment__content');
-    if (list) {
-      const wrap = doc.createElement('div');
-      wrap.setAttribute('data-proto', '');
-      wrap.className = 'proto-wrap';
-      wrap.appendChild(alertBox(doc, TXT_SALON));
-      list.after(wrap);
-    }
-  }
-  if (st.k === 'platnosc') {
-    const kill = st.d === 'salon' ? 'cash_or_card_at_the_store' : 'cash_on_delivery';
-    doc.querySelectorAll('.payment').forEach(p => {
-      const i = p.querySelector('input[type=radio]');
-      const name = (p.querySelector('.payment__name') || {}).textContent || '';
-      if ((i && i.value === kill) || (st.d === 'salon' && /Gotówka \/ Karta w salonie/.test(name)) || (st.d === 'kurier' && /Za pobraniem/.test(name))) {
-        p.style.display = 'none'; p.setAttribute('data-proto-hidden', '');
-      }
-    });
-    if (st.d === 'kurier') {
-      const pl = doc.querySelector('.payment-list');
-      if (pl) { const a = alertBox(doc, TXT_KURIER); a.style.marginBottom = '12px'; pl.before(a); }
-    }
-  }
+  if (doc.__patched) { f.contentWindow.location.reload(); return; }
+  doc.__patched = true;
+  // pasek "Raty: 10 x ..." to element sklepu testowego, nie produkcji
+  doc.querySelectorAll('.payment-offer').forEach(o => (o.closest('.px-3') || o).remove());
+  if (st.v !== 'B' || st.k !== 'platnosc') return;
+  const kill = st.d === 'salon' ? 'cash_or_card_at_the_store' : 'cash_on_delivery';
+  const p = [...doc.querySelectorAll('.payment')].find(x => { const i = x.querySelector('input[type=radio]'); return i && i.value === kill; });
+  if (!p) return;
+  const i = p.querySelector('input[type=radio]');
+  i.disabled = true; i.checked = false; i.removeAttribute('checked'); i.removeAttribute('required');
+  p.classList.add('proto-off');
+  const label = p.querySelector('.payment__label');
+  label.querySelectorAll('.payment__description').forEach(d => d.remove());
+  const why = doc.createElement('span');
+  why.className = 'payment__description proto-why';
+  why.innerHTML = '<i class="fa-solid fa-circle-info"></i><span></span>';
+  why.querySelector('span').textContent = POWOD[st.d];
+  label.appendChild(why);
+  // nieaktywna forma idzie na koniec listy, przed kartę podarunkową
+  const gift = [...doc.querySelectorAll('.payment')].find(x => x.querySelector('input[type=checkbox]'));
+  if (gift) gift.before(p); else p.parentNode.appendChild(p);
 }
 
 function wire() {
@@ -125,7 +110,7 @@ function wire() {
   if (!doc || !doc.querySelector('.checkout-scene') || doc.__wired) return;
   doc.__wired = true;
   const css = doc.createElement('style');
-  css.textContent = '.proto-wrap{padding:0 18px 18px 18px}@media (min-width:992px){.proto-wrap{padding:0 24px 24px 64px}}';
+  css.textContent = '.proto-off .payment__header{cursor:not-allowed}.proto-off .form-check-input,.proto-off .payment__img,.proto-off .payment__name{opacity:.45}.proto-off{background:var(--color-neutral-50,#fafafa)}.proto-why{display:flex;gap:6px;align-items:flex-start;color:var(--color-neutral-600,#555);margin-top:4px;line-height:1.45}.proto-why i{margin-top:.2em;flex:none}';
   doc.head.appendChild(css);
   doc.addEventListener('submit', e => e.preventDefault(), true);
   doc.addEventListener('click', e => {
